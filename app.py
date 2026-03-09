@@ -18,8 +18,6 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     
     # Menyimpan sementara untuk diproses Roboflow
-    temp_path = "temp_image.jpg"
-    cv2.imwrite(temp_path, img)
 
     with st.spinner('Sedang menghitung dan menganalisis pipa...'):
         try:
@@ -43,7 +41,7 @@ if uploaded_file is not None:
 
             # Melakukan Inferensi dengan konfigurasi custom
             with CLIENT.use_configuration(custom_config):
-                result = CLIENT.infer(temp_path, model_id="pipe-counting-3/1")
+                result = CLIENT.infer(img, model_id="pipe-counting-3/1")
 
             # --- 4. Menggambar ID dan Menghitung ---
             if "predictions" in result:
