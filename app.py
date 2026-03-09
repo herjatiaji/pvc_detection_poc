@@ -39,7 +39,7 @@ if uploaded_file is not None:
             # --- KONFIGURASI NMS & CONFIDENCE ---
             # iou_threshold = 0.8 (Semakin tinggi, semakin mengizinkan kotak tumpang tindih)
             # confidence_threshold = 0.4 (Menurunkan batas keyakinan agar pipa samar ikut terdeteksi)
-            custom_config = InferenceConfiguration(iou_threshold=0.8, confidence_threshold=0.4)
+            custom_config = InferenceConfiguration(iou_threshold=0.8, confidence_threshold=0.6)
 
             # Melakukan Inferensi dengan konfigurasi custom
             with CLIENT.use_configuration(custom_config):
