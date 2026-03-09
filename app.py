@@ -79,7 +79,3 @@ if uploaded_file is not None:
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses gambar: {e}")
         
-        finally:
-            # Hapus file sementara agar storage tidak penuh
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
