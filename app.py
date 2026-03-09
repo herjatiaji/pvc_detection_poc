@@ -1,81 +1,76 @@
-import cv2
 import streamlit as st
-import numpy as np
-from inference_sdk import InferenceHTTPClient
-import os
 from inference_sdk import InferenceHTTPClient, InferenceConfiguration
+from PIL import Image, ImageDraw
+import os
+
 # --- 1. Konfigurasi Halaman Web ---
 st.set_page_config(page_title="Sistem Deteksi Pipa", layout="centered")
-st.title("Pipe Counting System")
+st.title("Pipe Counting System 🔍")
 st.write("Upload foto tumpukan pipa untuk mendapatkan ID dan total jumlahnya.")
 
 # --- 2. Komponen Upload Foto ---
 uploaded_file = st.file_uploader("Pilih foto pipa (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Membaca file gambar yang diupload menjadi format OpenCV
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
+    temp_path = "temp_image.jpg"
     
-    # Menyimpan sementara untuk diproses Roboflow
+    # Membaca gambar menggunakan Pillow (PIL) dan menyimpannya secara fisik
+    # Ini 100% mencegah error 400 Bad Request dari Roboflow!
+    image = Image.open(uploaded_file).convert("RGB")
+    image.save(temp_path)
 
     with st.spinner('Sedang menghitung dan menganalisis pipa...'):
         try:
-            # --- 3. Inisialisasi Client Roboflow ---
-            CLIENT = InferenceHTTPClient(
-                    api_url="https://serverless.roboflow.com",
-                    api_key="wsDVlZyPMCoMTu7Z9los"# Ganti dengan API Key Anda
-            )
-
-            # Melakukan Inferensi
             # --- 3. Inisialisasi Client Roboflow ---
             CLIENT = InferenceHTTPClient(
                 api_url="https://serverless.roboflow.com",
                 api_key="wsDVlZyPMCoMTu7Z9los" # Ganti dengan API Key Anda
             )
 
-            # --- KONFIGURASI NMS & CONFIDENCE ---
-            # iou_threshold = 0.8 (Semakin tinggi, semakin mengizinkan kotak tumpang tindih)
-            # confidence_threshold = 0.4 (Menurunkan batas keyakinan agar pipa samar ikut terdeteksi)
+            # Konfigurasi NMS & Confidence
             custom_config = InferenceConfiguration(iou_threshold=0.8, confidence_threshold=0.6)
 
-            # Melakukan Inferensi dengan konfigurasi custom
+            # Melakukan Inferensi dengan membaca FILE FISIK
             with CLIENT.use_configuration(custom_config):
-                result = CLIENT.infer(img, model_id="pipe-counting-3/1")
+                result = CLIENT.infer(temp_path, model_id="pipe-counting-3/1")
 
-            # --- 4. Menggambar ID dan Menghitung ---
+            # --- 4. Menggambar ID dan Menghitung dengan Pillow ---
             if "predictions" in result:
                 total_pipa = len(result["predictions"])
+                
+                # Siapkan "kanvas" untuk menggambar di atas gambar
+                draw = ImageDraw.Draw(image)
                 
                 for index, pred in enumerate(result["predictions"]):
                     pipe_id = f"ID-{index + 1}"
                     
-                    x_center = int(pred['x'])
-                    y_center = int(pred['y'])
-                    width = int(pred['width'])
-                    height = int(pred['height'])
+                    x_center = pred['x']
+                    y_center = pred['y']
+                    width = pred['width']
+                    height = pred['height']
                     
-                    # Konversi koordinat tengah ke sudut OpenCV
-                    x_min = int(x_center - (width / 2))
-                    y_min = int(y_center - (height / 2))
-                    x_max = int(x_center + (width / 2))
-                    y_max = int(y_center + (height / 2))
+                    # Hitung koordinat sudut
+                    x_min = x_center - (width / 2)
+                    y_min = y_center - (height / 2)
+                    x_max = x_center + (width / 2)
+                    y_max = y_center + (height / 2)
                     
-                    # Menggambar Bounding Box
-                    cv2.rectangle(img, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                    # Menggambar Bounding Box (warna hijau, tebal 3)
+                    draw.rectangle([x_min, y_min, x_max, y_max], outline="#00FF00", width=3)
                     
-                    # Menambahkan Teks ID Pipa
-                    cv2.putText(img, pipe_id, (x_min, y_min - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-                # Konversi warna BGR (OpenCV) ke RGB (agar warna tidak terbalik di web)
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    # Menambahkan Teks ID Pipa (warna merah)
+                    draw.text((x_min, y_min - 15), pipe_id, fill="#FF0000")
 
                 # --- 5. Tampilkan Hasil Akhir ---
                 st.success(f"✅ Deteksi Selesai! Total pipa terhitung: {total_pipa}")
                 
-                # Menampilkan gambar dengan bounding box dan ID
-                st.image(img_rgb, caption=f"Hasil Deteksi Pipa PVC", use_container_width=True)
+                # Menampilkan gambar langsung ke Streamlit
+                st.image(image, caption="Hasil Deteksi Pipa PVC", use_container_width=True)
 
         except Exception as e:
-            st.error(f"Terjadi kesalahan saat memproses gambar: {e}")
-        
+            st.error(f"Terjadi kesalahan saat memproses API: {e}")
+            
+        finally:
+            # --- PENGHAPUSAN FILE AMAN ---
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
