@@ -6,7 +6,7 @@ import io
 
 # --- 1. Konfigurasi Halaman Web ---
 st.set_page_config(page_title="Sistem Deteksi Pipa", layout="centered")
-st.title("Pipe Counting System 🔍")
+st.title("Pipe Counting System")
 st.write("Upload foto tumpukan pipa untuk mendapatkan ID dan total jumlahnya.")
 
 # --- 2. Komponen Upload Foto ---
