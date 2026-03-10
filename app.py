@@ -1,7 +1,8 @@
 import streamlit as st
-from inference_sdk import InferenceHTTPClient, InferenceConfiguration
 from PIL import Image, ImageDraw
-import os
+import requests
+import base64
+import io
 
 # --- 1. Konfigurasi Halaman Web ---
 st.set_page_config(page_title="Sistem Deteksi Pipa", layout="centered")
@@ -12,29 +13,40 @@ st.write("Upload foto tumpukan pipa untuk mendapatkan ID dan total jumlahnya.")
 uploaded_file = st.file_uploader("Pilih foto pipa (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    temp_path = "temp_image.jpg"
-    
-    # Membaca gambar menggunakan Pillow (PIL) dan menyimpannya secara fisik
-    # Ini 100% mencegah error 400 Bad Request dari Roboflow!
+    # Membaca gambar menggunakan Pillow (PIL)
     image = Image.open(uploaded_file).convert("RGB")
-    image.save(temp_path)
-
-    with st.spinner('Sedang menghitung dan menganalisis pipa...'):
+    
+    with st.spinner('Sedang mengirim data ke server AI...'):
         try:
-            # --- 3. Inisialisasi Client Roboflow ---
-            CLIENT = InferenceHTTPClient(
-                api_url="https://serverless.roboflow.com",
-                api_key="wsDVlZyPMCoMTu7Z9los" # Ganti dengan API Key Anda
+            # --- 3. Mengubah Gambar menjadi Teks (Base64) ---
+            # Ini membuat kita tidak perlu menyimpan file temp_image.jpg di server!
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("ascii")
+
+            # --- 4. Memanggil REST API Roboflow secara Langsung ---
+            # Endpoint standar deteksi Roboflow (tanpa inference-sdk)
+            api_url = "https://detect.roboflow.com/pipe-counting-3/1"
+            
+            # Parameter API (API Key, Confidence 60%, Overlap NMS 80%)
+            params = {
+                "api_key": "wsDVlZyPMCoMTu7Z9los", # API Key Anda
+                "confidence": 60,
+                "overlap": 80
+            }
+            
+            # Melakukan HTTP POST Request
+            response = requests.post(
+                api_url, 
+                params=params, 
+                data=img_str, 
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
+            
+            # Membaca hasil balasan dari Roboflow
+            result = response.json()
 
-            # Konfigurasi NMS & Confidence
-            custom_config = InferenceConfiguration(iou_threshold=0.8, confidence_threshold=0.6)
-
-            # Melakukan Inferensi dengan membaca FILE FISIK
-            with CLIENT.use_configuration(custom_config):
-                result = CLIENT.infer(temp_path, model_id="pipe-counting-3/1")
-
-            # --- 4. Menggambar ID dan Menghitung dengan Pillow ---
+            # --- 5. Menggambar ID dan Menghitung ---
             if "predictions" in result:
                 total_pipa = len(result["predictions"])
                 
@@ -61,16 +73,12 @@ if uploaded_file is not None:
                     # Menambahkan Teks ID Pipa (warna merah)
                     draw.text((x_min, y_min - 15), pipe_id, fill="#FF0000")
 
-                # --- 5. Tampilkan Hasil Akhir ---
+                # --- 6. Tampilkan Hasil Akhir ---
                 st.success(f"✅ Deteksi Selesai! Total pipa terhitung: {total_pipa}")
-                
-                # Menampilkan gambar langsung ke Streamlit
                 st.image(image, caption="Hasil Deteksi Pipa PVC", use_container_width=True)
+            else:
+                st.warning("Tidak ada pipa yang terdeteksi atau terjadi kesalahan format API.")
+                st.write("Respons Server:", result) # Untuk keperluan debugging jika kosong
 
         except Exception as e:
-            st.error(f"Terjadi kesalahan saat memproses API: {e}")
-            
-        finally:
-            # --- PENGHAPUSAN FILE AMAN ---
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            st.error(f"Terjadi kesalahan komunikasi API: {e}")
